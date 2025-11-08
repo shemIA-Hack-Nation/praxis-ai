@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+langchain
+langchain-community
+nbformat
+langchain-groq
+langchain-openai
+
