@@ -329,3 +329,7 @@ desktop.ini
 
 # Custom project specific
 # Add your project-specific ignores here
+
+# Data folder - contains extracted notebook images and processed data
+data/
+!data/.gitkeep
