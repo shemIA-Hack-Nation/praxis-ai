@@ -157,21 +157,50 @@ def parse_notebook(notebook_path: str) -> list:
                 output_index += 1
             cell_index += 1
     
-    # Create a metadata file for this notebook
+    # Create metadata for this notebook
+    notebook_id = f"{Path(notebook_path).stem}_{hashlib.md5(os.path.abspath(notebook_path).encode()).hexdigest()[:8]}"
     metadata = {
         "notebook_path": os.path.abspath(notebook_path),
         "notebook_name": Path(notebook_path).stem,
-        "notebook_id": f"{Path(notebook_path).stem}_{hashlib.md5(os.path.abspath(notebook_path).encode()).hexdigest()[:8]}",
+        "notebook_id": notebook_id,
         "images_folder": images_folder,
         "total_cells": cell_index,
         "parsed_at": str(Path(notebook_path).stat().st_mtime)
     }
     
-    # Save metadata file
+    # Count different cell types
+    code_cells = sum(1 for cell in structured_cells if cell.get('type') == 'code')
+    markdown_cells = sum(1 for cell in structured_cells if cell.get('type') == 'markdown')
+    output_cells = sum(1 for cell in structured_cells if cell.get('type') in ['output_text', 'output_plot'])
+    image_cells = sum(1 for cell in structured_cells if cell.get('type') == 'output_plot')
+    
+    # Create summary
+    summary = {
+        "total_elements": len(structured_cells),
+        "code_cells": code_cells,
+        "markdown_cells": markdown_cells,
+        "output_cells": output_cells,
+        "images_extracted": image_cells,
+        "notebook_id": notebook_id
+    }
+    
+    # Save basic metadata file
     metadata_path = Path(images_folder) / "notebook_metadata.json"
-    with open(metadata_path, 'w') as f:
+    with open(metadata_path, 'w', encoding='utf-8') as f:
         import json
-        json.dump(metadata, f, indent=2)
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    
+    # Save complete parsed data including all cells
+    complete_data = {
+        "notebook_metadata": metadata,
+        "cells": structured_cells,
+        "summary": summary
+    }
+    
+    parsed_data_path = Path(images_folder) / "notebook_parsed_data.json"
+    with open(parsed_data_path, 'w', encoding='utf-8') as f:
+        import json
+        json.dump(complete_data, f, indent=2, ensure_ascii=False)
     
     return structured_cells
 

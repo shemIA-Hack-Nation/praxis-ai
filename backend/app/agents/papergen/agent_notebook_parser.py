@@ -69,8 +69,12 @@ def run_notebook_parser(notebook_path: str):
         if first_image and 'content' in first_image:
             content = first_image['content']
             if isinstance(content, dict) and 'notebook_id' in content:
-                print(f"📁 Images saved to: data/notebook_images/{content['notebook_id']}/")
-                print(f"🔗 Notebook ID for linking: {content['notebook_id']}")
+                notebook_id = content['notebook_id']
+                images_folder = f"data/notebook_images/{notebook_id}/"
+                print(f"📁 Images saved to: {images_folder}")
+                print(f"📄 Metadata saved to: {images_folder}notebook_metadata.json")
+                print(f"📋 Complete parsed data saved to: {images_folder}notebook_parsed_data.json")
+                print(f"🔗 Notebook ID for linking: {notebook_id}")
     
     return result
 
