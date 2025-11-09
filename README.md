@@ -1,10 +1,30 @@
-# PraxisAI 🚀
 
 **The Multi-Agent System that Turns Raw Code into Industry-Ready Research**
 
 PraxisAI is an intelligent research assistant that transforms Jupyter notebooks into comprehensive research papers and identifies real-world industrial applications. Built with a sophisticated multi-agent architecture, it bridges the gap between academic research and commercial innovation.
-
+<br>
+<p align="center">
+<img
+width="500"
+height="300"
+alt="Intelligence (2)"
+src="https://github.com/user-attachments/assets/a6d2aed8-a127-4b1f-bce7-2dcf28c2b2d7"
+style="max-width: 100%; height: auto;"
+>
+</p>
 ## 🌟 Overview
+
+PraxisAI Agentic AI Workflows : 
+Paper Generation: 
+
+<img width="1920" height="1080" alt="Intelligence" src="https://github.com/user-attachments/assets/2a6c63b3-80e7-40ee-991e-b835bd686813" />
+
+
+Novelty Assessment
+
+<img width="1920" height="1080" alt="Intelligence (1)" src="https://github.com/user-attachments/assets/579062a3-941a-41f4-8c48-5f9b58a933e1" />
+
+
 
 PraxisAI operates in two main phases:
 
