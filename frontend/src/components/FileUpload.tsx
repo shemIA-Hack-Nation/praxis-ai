@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Upload, FileCode } from "lucide-react";
+import { Upload, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -28,10 +28,10 @@ export const FileUpload = ({ onFileSelect, isLoading }: FileUploadProps) => {
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    const ipynbFile = files.find(file => file.name.endsWith('.ipynb'));
+    const pdfFile = files.find(file => file.name.endsWith('.pdf'));
     
-    if (ipynbFile) {
-      setSelectedFile(ipynbFile);
+    if (pdfFile) {
+      setSelectedFile(pdfFile);
     }
   }, []);
 
@@ -64,7 +64,7 @@ export const FileUpload = ({ onFileSelect, isLoading }: FileUploadProps) => {
         <div className="flex flex-col items-center gap-4">
           {selectedFile ? (
             <>
-              <FileCode className="w-16 h-16 text-primary" />
+              <FileText className="w-16 h-16 text-primary" />
               <div>
                 <p className="text-lg font-semibold text-foreground">{selectedFile.name}</p>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -77,7 +77,7 @@ export const FileUpload = ({ onFileSelect, isLoading }: FileUploadProps) => {
                   disabled={isLoading}
                   className="bg-gradient-primary text-primary-foreground hover:opacity-90 shadow-glow"
                 >
-                  {isLoading ? "Analyzing..." : "Generate Report"}
+                  {isLoading ? "Analyzing..." : "Analyze Paper"}
                 </Button>
                 <Button
                   onClick={() => setSelectedFile(null)}
@@ -93,16 +93,16 @@ export const FileUpload = ({ onFileSelect, isLoading }: FileUploadProps) => {
               <Upload className="w-16 h-16 text-muted-foreground" />
               <div>
                 <p className="text-lg font-semibold text-foreground mb-2">
-                  Drop your Jupyter Notebook here
+                  Drop your Research Paper here
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  or click to browse for .ipynb files
+                  or click to browse for .pdf files
                 </p>
               </div>
               <label className="mt-4">
                 <input
                   type="file"
-                  accept=".ipynb"
+                  accept=".pdf"
                   onChange={handleFileInput}
                   className="hidden"
                   disabled={isLoading}

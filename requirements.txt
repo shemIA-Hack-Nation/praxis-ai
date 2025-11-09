@@ -1,0 +1,72 @@
+# FastAPI and Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+pydantic-settings==2.1.0
+websockets==12.0
+sse-starlette==1.8.2
+
+# LLM and AI
+huggingface_hub>=0.20.0
+google-generativeai>=0.3.0
+groq>=0.4.0
+langchain>=0.1.0
+langchain-google-genai>=0.0.6
+langchain-groq>=0.1.0
+tiktoken>=0.5.0
+# Optional: Keep OpenAI for fallback if needed
+# openai>=1.0.0
+# anthropic>=0.7.0
+# langchain-openai>=0.0.5
+# langchain-anthropic>=0.1.0
+
+# Embeddings and Vector DB
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
+chromadb==0.4.18
+pinecone-client==2.2.4
+weaviate-client==3.25.3
+qdrant-client==1.7.0
+
+# Graph Database
+neo4j==5.14.1
+python-arango==7.7.0
+
+# Research APIs and Scraping
+arxiv==2.1.1
+arxivscraper==0.1.0
+semanticscholar==2.8.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+aiohttp==3.9.1
+PyPDF2==3.0.1
+pdfplumber==0.10.3
+tf-keras==2.15.0
+
+# Data Processing
+pandas==2.1.3
+numpy==1.26.2
+networkx==3.2.1
+scikit-learn==1.3.2
+
+# Notebook Processing
+nbformat==5.9.2
+nbconvert==7.11.0
+jupyter==1.0.0
+
+# Caching
+redis==5.0.1
+hiredis==2.2.3
+
+# Utilities
+python-dotenv==1.0.0
+python-json-logger==2.0.7
+aiofiles==23.2.1
+typing-extensions==4.8.0
+
+# Testing (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
