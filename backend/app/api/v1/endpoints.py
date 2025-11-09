@@ -339,3 +339,39 @@ async def list_notebooks():
             status_code=500,
             detail=f"Failed to list notebooks: {str(e)}"
         )
+
+# Industry Navigation endpoint
+try:
+    from backend.app.agents.industrynav.orchestrator_sprint2 import run_industry_nav_crew
+    
+    @router.post("/run-industry-nav/")
+    async def run_industry_nav(file: UploadFile = File(...)):
+        """
+        Run Industry Navigation analysis on uploaded paper content.
+        
+        Args:
+            file: The uploaded paper file
+            
+        Returns:
+            Dict containing the industry navigation report
+        """
+        try:
+            # Get content from uploaded file
+            paper_content_bytes = await file.read()
+            paper_content_string = paper_content_bytes.decode('utf-8') 
+            # (You'll need a real PDF/text parser here, maybe in 'pipeline_manager.py')
+            
+            # Call the orchestrator function
+            report = run_industry_nav_crew(paper_content=paper_content_string)
+            
+            # Return the final report
+            return {"success": True, "report": report}
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to run industry navigation: {str(e)}"
+            )
+            
+except ImportError:
+    print("⚠️ Industry Navigation orchestrator not available")

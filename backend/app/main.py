@@ -7,6 +7,10 @@ import tempfile
 import json
 from pathlib import Path
 import sys
+from dotenv import load_dotenv
+
+# Load environment variables first
+load_dotenv()
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent.parent
@@ -16,9 +20,13 @@ from backend.app.agents.agent_tools import parse_notebook
 from backend.app.api.v1.endpoints import router as api_router
 from backend.app.api.v1.test_endpoints import router as test_router
 
+# Check for required environment variables
+if not os.getenv("GEMINI_API_KEY"):
+    print("🚨 WARNING: GEMINI_API_KEY not loaded from .env!")
+
 app = FastAPI(
     title="Praxis AI Backend",
-    description="Backend API for research paper generation from Jupyter notebooks",
+    description="Backend API for research paper generation from Jupyter notebooks with multi-agent orchestration",
     version="1.0.0"
 )
 
