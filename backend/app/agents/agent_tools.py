@@ -57,8 +57,8 @@ def save_image_from_base64(base64_data: str, images_folder: str, cell_index: int
         with open(image_path, 'wb') as f:
             f.write(image_bytes)
         
-        # Return the full path to the saved image
-        return str(image_path)
+        # Return just the filename (not the full path)
+        return filename
     except Exception as e:
         print(f"Error saving image: {e}")
         return ""
@@ -95,13 +95,16 @@ def parse_notebook(notebook_path: str) -> list:
         if cell.cell_type == 'markdown':
             structured_cells.append({
                 "type": "markdown",
-                "content": cell.source
+                "content": cell.source,
+                "source": cell.source  # Add source field for frontend compatibility
             })
             cell_index += 1
         elif cell.cell_type == 'code':
             structured_cells.append({
                 "type": "code",
-                "content": cell.source
+                "content": cell.source,
+                "source": cell.source,  # Add source field for frontend compatibility
+                "execution_count": cell.get('execution_count', None)
             })
             
             output_index = 0
