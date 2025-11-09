@@ -174,3 +174,151 @@ def parse_notebook(notebook_path: str) -> list:
         json.dump(metadata, f, indent=2)
     
     return structured_cells
+
+
+@tool("write_abstract", return_direct=True)
+def write_abstract(synthesis_data_json: str) -> str:
+    """
+    Write an abstract section for a research paper.
+    
+    Args:
+        synthesis_data_json (str): JSON string containing synthesis data with keys:
+                                 - user_notes: User's notes and project description
+                                 - method_draft: Methodology section content
+                                 - results_draft: Results section content
+    
+    Returns:
+        str: Generated abstract section formatted with section header
+    """
+    try:
+        from backend.app.agents.papergen.agent_literary import LiteraryAgent
+        import json
+        
+        synthesis_data = json.loads(synthesis_data_json)
+        agent = LiteraryAgent()
+        return agent.write_abstract(synthesis_data)
+    except json.JSONDecodeError as e:
+        return f"Error: Invalid JSON format - {str(e)}"
+    except Exception as e:
+        return f"Error: Abstract generation failed - {str(e)}"
+
+@tool("write_introduction", return_direct=True)
+def write_introduction(synthesis_data_json: str) -> str:
+    """
+    Write an introduction section for a research paper.
+    
+    Args:
+        synthesis_data_json (str): JSON string containing synthesis data with keys:
+                                 - user_notes: User's notes and project description
+                                 - method_draft: Methodology section content
+                                 - results_draft: Results section content
+    
+    Returns:
+        str: Generated introduction section formatted with section header
+    """
+    try:
+        from backend.app.agents.papergen.agent_literary import LiteraryAgent
+        import json
+        
+        synthesis_data = json.loads(synthesis_data_json)
+        agent = LiteraryAgent()
+        return agent.write_introduction(synthesis_data)
+    except json.JSONDecodeError as e:
+        return f"Error: Invalid JSON format - {str(e)}"
+    except Exception as e:
+        return f"Error: Introduction generation failed - {str(e)}"
+
+@tool("write_conclusion", return_direct=True)
+def write_conclusion(synthesis_data_json: str) -> str:
+    """
+    Write a conclusion section for a research paper.
+    
+    Args:
+        synthesis_data_json (str): JSON string containing synthesis data with keys:
+                                 - user_notes: User's notes and project description
+                                 - method_draft: Methodology section content
+                                 - results_draft: Results section content
+    
+    Returns:
+        str: Generated conclusion section formatted with section header
+    """
+    try:
+        from backend.app.agents.papergen.agent_literary import LiteraryAgent
+        import json
+        
+        synthesis_data = json.loads(synthesis_data_json)
+        agent = LiteraryAgent()
+        return agent.write_conclusion(synthesis_data)
+    except json.JSONDecodeError as e:
+        return f"Error: Invalid JSON format - {str(e)}"
+    except Exception as e:
+        return f"Error: Conclusion generation failed - {str(e)}"
+
+@tool("literary_agent_processor", return_direct=True)
+def literary_agent_processor(task_description: str, synthesis_data_json: str) -> str:
+    """
+    Process literary writing tasks for research papers using the Literary Agent.
+    
+    This tool generates complete research paper reports or specific sections
+    by synthesizing information from methodology and results sections.
+    
+    Args:
+        task_description (str): Task description specifying what to generate:
+                              - "Generate full report" or "Complete report" for full paper
+                              - "Write ABSTRACT" for abstract only
+                              - "Write INTRODUCTION" for introduction only  
+                              - "Write CONCLUSION" for conclusion only
+                              - "Write ABSTRACT and CONCLUSION" for both
+        synthesis_data_json (str): JSON string containing synthesis data with keys:
+                                 - method_draft: Methodology section content
+                                 - results_draft: Results section content
+    
+    Returns:
+        str: Generated literary content or complete research paper report
+        
+    Example:
+        task = "Generate full report"
+        data = '{"method_draft": "We used CNN...", "results_draft": "Achieved 91.5% accuracy..."}'
+        result = literary_agent_processor(task, data)
+    """
+    try:
+        from backend.app.agents.papergen.agent_literary import LiteraryAgent
+        import json
+        
+        synthesis_data = json.loads(synthesis_data_json)
+        agent = LiteraryAgent()
+        return agent.process_task(task_description, synthesis_data)
+    except json.JSONDecodeError as e:
+        return f"Error: Invalid JSON format - {str(e)}"
+    except Exception as e:
+        return f"Error: Literary Agent processing failed - {str(e)}"
+
+@tool("synthesize_literary_sections", return_direct=True)
+def synthesize_literary_sections(synthesis_data_json: str) -> str:
+    """
+    Generate all narrative sections (Abstract, Introduction, Conclusion) for a research paper.
+    
+    Args:
+        synthesis_data_json (str): JSON string containing synthesis data with keys:
+                                 - user_notes: User's notes and project description
+                                 - method_draft: Methodology section content
+                                 - results_draft: Results section content
+    
+    Returns:
+        str: All generated sections formatted with section headers
+    """
+    try:
+        from backend.app.agents.papergen.agent_literary import LiteraryAgent
+        import json
+        
+        synthesis_data = json.loads(synthesis_data_json)
+        agent = LiteraryAgent()
+        sections = agent.synthesize_all_sections(synthesis_data)
+        
+        # Combine all sections
+        result = f"{sections['abstract']}\n\n{sections['introduction']}\n\n{sections['conclusion']}"
+        return result
+    except json.JSONDecodeError as e:
+        return f"Error: Invalid JSON format - {str(e)}"
+    except Exception as e:
+        return f"Error: Literary synthesis failed - {str(e)}"
