@@ -340,38 +340,200 @@ async def list_notebooks():
             detail=f"Failed to list notebooks: {str(e)}"
         )
 
-# Industry Navigation endpoint
-try:
-    from backend.app.agents.industrynav.orchestrator_sprint2 import run_industry_nav_crew
+# Papergen Orchestrator endpoint with streaming agent workflow
+@router.post("/generate_paper_stream/")
+async def generate_paper_stream(file: UploadFile = File(...)):
+    """
+    Generate research paper using orchestrator workflow with streaming agent calls.
     
-    @router.post("/run-industry-nav/")
-    async def run_industry_nav(file: UploadFile = File(...)):
-        """
-        Run Industry Navigation analysis on uploaded paper content.
+    Args:
+        file: The uploaded .ipynb file
         
-        Args:
-            file: The uploaded paper file
-            
-        Returns:
-            Dict containing the industry navigation report
-        """
+    Returns:
+        Streaming response showing each agent call explicitly
+    """
+    # Validate file type
+    if not file.filename or not file.filename.endswith('.ipynb'):
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid file type. Please upload a .ipynb file."
+        )
+    
+    async def stream_paper_generation():
         try:
-            # Get content from uploaded file
-            paper_content_bytes = await file.read()
-            paper_content_string = paper_content_bytes.decode('utf-8') 
-            # (You'll need a real PDF/text parser here, maybe in 'pipeline_manager.py')
+            # Create temporary file
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.ipynb', delete=False) as temp_file:
+                content = await file.read()
+                temp_file.write(content)
+                temp_notebook_path = temp_file.name
             
-            # Call the orchestrator function
-            report = run_industry_nav_crew(paper_content=paper_content_string)
+            # Phase 1: Parse Notebook
+            yield f"data: {json.dumps({'phase': 'notebook_parsing', 'agent': 'NotebookParser', 'status': 'starting', 'message': '🔍 Starting notebook analysis...', 'progress': 5})}\n\n"
+            await asyncio.sleep(0.5)
             
-            # Return the final report
-            return {"success": True, "report": report}
+            try:
+                from backend.app.agents.agent_tools import parse_notebook
+                parsed_cells = parse_notebook(temp_notebook_path)
+                yield f"data: {json.dumps({'phase': 'notebook_parsing', 'agent': 'NotebookParser', 'status': 'completed', 'message': f'✅ Parsed {len(parsed_cells)} cells successfully', 'progress': 15, 'data': {'cell_count': len(parsed_cells)}})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'phase': 'notebook_parsing', 'agent': 'NotebookParser', 'status': 'error', 'message': f'❌ Notebook parsing failed: {str(e)}', 'progress': 15})}\n\n"
+                return
             
+            await asyncio.sleep(0.5)
+            
+            # Phase 2: Initialize Orchestrator
+            yield f"data: {json.dumps({'phase': 'orchestrator_init', 'agent': 'PapergenOrchestrator', 'status': 'starting', 'message': '🎯 Initializing multi-agent orchestrator...', 'progress': 20})}\n\n"
+            await asyncio.sleep(0.5)
+            
+            try:
+                from backend.app.agents.papergen.orchestrator_papergen import create_papergen_orchestrator
+                orchestrator = create_papergen_orchestrator()
+                
+                # Check which agent tools are available (consolidated tools approach)
+                agents_status = {
+                    'LiteraryAgent': orchestrator.synthesize_literary_sections is not None,
+                    'IllustrationCritic': orchestrator.generate_illustrations is not None,
+                    'MethodologyWriter': orchestrator.write_methodology is not None,
+                    'ResultsWriter': orchestrator.write_results is not None,
+                    'FormatterAgent': orchestrator.format_complete_paper is not None
+                }
+                
+                available_agents = sum(agents_status.values())
+                yield f"data: {json.dumps({'phase': 'orchestrator_init', 'agent': 'PapergenOrchestrator', 'status': 'completed', 'message': f'✅ Orchestrator ready with {available_agents}/5 agents', 'progress': 25, 'data': {'agents_status': agents_status}})}\n\n"
+                
+            except Exception as e:
+                yield f"data: {json.dumps({'phase': 'orchestrator_init', 'agent': 'PapergenOrchestrator', 'status': 'error', 'message': f'❌ Orchestrator initialization failed: {str(e)}', 'progress': 25})}\n\n"
+                return
+            
+            await asyncio.sleep(0.5)
+            
+            # Phase 3: Start Paper Generation Workflow
+            yield f"data: {json.dumps({'phase': 'workflow_start', 'agent': 'PapergenOrchestrator', 'status': 'starting', 'message': '🚀 Starting multi-agent paper generation workflow...', 'progress': 30})}\n\n"
+            await asyncio.sleep(0.5)
+            
+            # Load template
+            template_path = Path("templates/research_paper_template.md")
+            if template_path.exists():
+                template_content = template_path.read_text()
+            else:
+                template_content = """
+                # Research Paper Template
+                
+                [ABSTRACT]
+                
+                ## Introduction
+                [INTRODUCTION]
+                
+                ## Methodology
+                [METHODOLOGY]
+                
+                ## Results
+                [RESULTS]
+                
+                ## Conclusion
+                [CONCLUSION]
+                """
+            
+            # Generate paper with detailed workflow streaming
+            try:
+                result = await orchestrator.generate_paper(
+                    notebook_cells=parsed_cells,
+                    template=template_content,
+                    user_requirements={"style": "academic"}
+                )
+                
+                # Stream each workflow stage based on messages
+                current_progress = 35
+                progress_per_stage = 60 / len(result.get('messages', []))
+                
+                for message in result.get('messages', []):
+                    agent_name = message.get('agent', 'Unknown')
+                    stage = message.get('stage', '')
+                    msg_content = message.get('message', message.get('error', ''))
+                    is_error = 'error' in message
+                    
+                    # Map stage names to user-friendly names
+                    stage_names = {
+                        'analysis': 'Notebook Analysis',
+                        'task_assignment': 'Task Assignment', 
+                        'methodology': 'Methodology Generation',
+                        'results': 'Results Analysis',
+                        'literary': 'Literary Writing',
+                        'illustrations': 'Illustration Review',
+                        'assembly': 'Paper Assembly',
+                        'quality_check': 'Quality Validation'
+                    }
+                    
+                    stage_display = stage_names.get(stage, stage.replace('_', ' ').title())
+                    
+                    # Determine agent display name
+                    agent_display = {
+                        'orchestrator': 'PapergenOrchestrator',
+                        'methodology_writer': 'MethodologyWriter',
+                        'results_writer': 'ResultsWriter', 
+                        'literary_agent': 'LiteraryAgent',
+                        'illustration_critic': 'IllustrationCritic',
+                        'formatter': 'FormatterAgent'
+                    }.get(agent_name, agent_name)
+                    
+                    status = 'error' if is_error else 'working'
+                    
+                    yield f"data: {json.dumps({'phase': 'agent_workflow', 'agent': agent_display, 'stage': stage_display, 'status': status, 'message': msg_content, 'progress': int(current_progress)})}\n\n"
+                    
+                    current_progress += progress_per_stage
+                    await asyncio.sleep(0.3)
+                
+                # Final results
+                if result.get('success'):
+                    latex_file = result.get('latex_file', '')
+                    pdf_file = result.get('pdf_file', '')
+                    
+                    # Create download URLs for the files
+                    latex_url = f"/reports/{Path(latex_file).name}" if latex_file else ""
+                    pdf_url = f"/reports/{Path(pdf_file).name}" if pdf_file else ""
+                    
+                    final_message = f"✅ Paper generation completed! Generated {len(result.get('sections', {}))} sections with {len(result.get('illustrations', []))} illustrations."
+                    if pdf_file:
+                        final_message += f" PDF compiled successfully."
+                    elif latex_file:
+                        final_message += f" LaTeX file generated (PDF compilation unavailable)."
+                    
+                    yield f"data: {json.dumps({'phase': 'completion', 'agent': 'PapergenOrchestrator', 'status': 'completed', 'message': final_message, 'progress': 100, 'data': {'paper_content': result.get('paper_content', ''), 'sections': result.get('sections', {}), 'illustrations': result.get('illustrations', []), 'latex_file': latex_file, 'pdf_file': pdf_file, 'latex_url': latex_url, 'pdf_url': pdf_url, 'metadata': result.get('metadata', {})}})}\n\n"
+                else:
+                    error_msg = f"❌ Paper generation failed. Errors: {len(result.get('errors', []))}"
+                    yield f"data: {json.dumps({'phase': 'completion', 'agent': 'PapergenOrchestrator', 'status': 'error', 'message': error_msg, 'progress': 100, 'data': {'errors': result.get('errors', []), 'warnings': result.get('warnings', [])}})}\n\n"
+                
+            except Exception as e:
+                yield f"data: {json.dumps({'phase': 'workflow_error', 'agent': 'PapergenOrchestrator', 'status': 'error', 'message': f'❌ Workflow execution failed: {str(e)}', 'progress': 100})}\n\n"
+            
+            # Cleanup
+            try:
+                os.unlink(temp_notebook_path)
+            except:
+                pass
+                
         except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to run industry navigation: {str(e)}"
-            )
-            
-except ImportError:
-    print("⚠️ Industry Navigation orchestrator not available")
+            yield f"data: {json.dumps({'phase': 'fatal_error', 'agent': 'System', 'status': 'error', 'message': f'❌ Fatal error: {str(e)}', 'progress': 0})}\n\n"
+    
+    return StreamingResponse(
+        stream_paper_generation(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
+
+
+# Industry Navigation endpoint (placeholder for future implementation)
+# try:
+#     from backend.app.agents.industrynav.orchestrator_sprint2 import run_industry_nav_crew
+#     
+#     @router.post("/run-industry-nav/")
+#     async def run_industry_nav(file: UploadFile = File(...)):
+#         """Run Industry Navigation analysis on uploaded paper content."""
+#         # Implementation placeholder
+#         pass
+# except ImportError:
+#     print("⚠️ Industry Navigation orchestrator not available")

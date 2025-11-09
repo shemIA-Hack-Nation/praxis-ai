@@ -24,6 +24,8 @@ class PapergenState(TypedDict):
     
     # Final output
     assembled_paper: str
+    latex_file: str  # Path to generated LaTeX file
+    pdf_file: str    # Path to compiled PDF file
     generation_complete: bool
     
     # Error handling
@@ -50,18 +52,35 @@ class PapergenOrchestrator:
     def __init__(self):
         self.workflow = self._build_workflow()
         
-        # Agent instances (to be implemented)
-        self.methodology_writer = None  # MethodologyWriter()
-        self.results_writer = None      # ResultsWriter() 
-        
-        # Import and instantiate LiteraryAgent
+        # Import consolidated agent tools
         try:
-            from .agent_literary import LiteraryAgent
-        except ImportError:
-            from agent_literary import LiteraryAgent
-        self.literary_agent = LiteraryAgent()
+            from ..agent_tools import (
+                write_methodology,
+                write_results, 
+                synthesize_literary_sections,
+                generate_illustrations,
+                format_complete_paper,
+                generate_paper_metadata
+            )
+            
+            self.write_methodology = write_methodology
+            self.write_results = write_results
+            self.synthesize_literary_sections = synthesize_literary_sections
+            self.generate_illustrations = generate_illustrations
+            self.format_complete_paper = format_complete_paper
+            self.generate_paper_metadata = generate_paper_metadata
+            
+            print("✓ All agent tools loaded from consolidated agent_tools.py")
+        except ImportError as e:
+            print(f"⚠️ Failed to import agent tools: {e}")
+            # Set fallback None values
+            self.write_methodology = None
+            self.write_results = None  
+            self.synthesize_literary_sections = None
+            self.generate_illustrations = None
+            self.format_complete_paper = None
+            self.generate_paper_metadata = None
         
-        self.illustration_critic = None # IllustrationCritic()
         self.formatter_agent = None     # FormatterAgent()
         
     def _build_workflow(self):
@@ -158,8 +177,23 @@ class PapergenOrchestrator:
         ]
         
         for cell in code_cells:
-            content = cell.get("content", "") + cell.get("source", "")
-            if any(keyword in content for keyword in methodology_keywords):
+            # Handle different content formats
+            content_raw = cell.get("content", "")
+            source_raw = cell.get("source", "")
+            
+            # Convert content to string if it's a list
+            if isinstance(content_raw, list):
+                content_str = "\n".join(content_raw)
+            else:
+                content_str = str(content_raw) if content_raw else ""
+            
+            # Convert source to string
+            source_str = str(source_raw) if source_raw else ""
+            
+            # Combine content
+            combined_content = content_str + " " + source_str
+            
+            if any(keyword in combined_content for keyword in methodology_keywords):
                 methodology_cells.append(cell)
                 
         return methodology_cells
@@ -185,6 +219,56 @@ class PapergenOrchestrator:
                 
         return objectives
     
+    def _parse_illustration_results(self, results: str) -> List[Dict[str, Any]]:
+        """Parse IllustrationCritic agent results to extract generated illustration info"""
+        illustrations = []
+        
+        try:
+            # Split results by lines and look for result patterns
+            lines = results.split('\n')
+            current_illustration = {}
+            
+            for line in lines:
+                line = line.strip()
+                
+                if line.startswith("INFO:"):
+                    # Start of new illustration info
+                    if current_illustration and "path" in current_illustration:
+                        illustrations.append(current_illustration)
+                    current_illustration = {"type": "generated", "source": "illustration_critic"}
+                    
+                elif line.startswith("TASK:"):
+                    # Extract task/description
+                    task_info = line.replace("TASK:", "").strip()
+                    current_illustration["description"] = task_info
+                    
+                elif line.startswith("RESULT:"):
+                    # Extract file path
+                    result_info = line.replace("RESULT:", "").strip()
+                    current_illustration["path"] = result_info
+                    
+                elif line.startswith("CAPTION:"):
+                    # Extract caption
+                    caption_info = line.replace("CAPTION:", "").strip()
+                    current_illustration["caption"] = caption_info
+            
+            # Add the last illustration if it exists
+            if current_illustration and "path" in current_illustration:
+                illustrations.append(current_illustration)
+                
+        except Exception as e:
+            print(f"⚠️ Warning: Could not parse illustration results: {e}")
+            # Return a basic illustration if parsing fails
+            illustrations = [{
+                "type": "generated",
+                "source": "illustration_critic", 
+                "description": "Generated visualization from IllustrationCritic",
+                "path": "generated_figure.png",
+                "caption": "Figure: Generated visualization for enhanced paper presentation"
+            }]
+        
+        return illustrations
+    
     def _assign_tasks(self, state: PapergenState) -> PapergenState:
         """
         Assign specific tasks to specialist agents based on template and content.
@@ -204,20 +288,20 @@ class PapergenOrchestrator:
             task_specs = {
                 "methodology_writer": {
                     "task": "Generate methodology section from code cells",
-                    "input_cells": assignments["methodology_cells"],
+                    "input_cells": assignments.get("methodology_cells", []),
                     "target_sections": [s for s in required_sections if "method" in s.lower()],
                     "requirements": "Translate code into formal methodology prose"
                 },
                 "results_writer": {
                     "task": "Generate results section from outputs and plots", 
-                    "input_cells": assignments["results_cells"],
+                    "input_cells": assignments.get("results_cells", []),
                     "target_sections": [s for s in required_sections if "result" in s.lower()],
                     "requirements": "Interpret plots and outputs into results narrative"
                 },
                 "literary_agent": {
                     "task": "Generate high-level narrative sections",
                     "input_data": {
-                        "user_objectives": assignments["user_objectives"],
+                        "user_objectives": assignments.get("user_objectives", {}),
                         "methodology_preview": "Will receive from MethodologyWriter",
                         "results_preview": "Will receive from ResultsWriter"
                     },
@@ -283,17 +367,21 @@ class PapergenOrchestrator:
         try:
             task_spec = state["task_assignments"]["agent_tasks"]["methodology_writer"]
             
-            # TODO: Implement actual MethodologyWriter agent call
-            # if self.methodology_writer:
-            #     methodology_draft = await self.methodology_writer.generate_section(
-            #         cells=task_spec["input_cells"],
-            #         requirements=task_spec["requirements"]
-            #     )
-            # else:
-            
-            # Placeholder implementation
-            methodology_cells = task_spec["input_cells"]
-            methodology_draft = self._generate_methodology_placeholder(methodology_cells)
+            # Call MethodologyWriter agent via consolidated tools
+            if self.write_methodology:
+                methodology_cells = state["task_assignments"]["methodology_cells"]
+                
+                # Prepare data format for the agent tool
+                agent_data = {
+                    "cells": methodology_cells
+                }
+                notebook_json = json.dumps(agent_data)
+                
+                methodology_draft = self.write_methodology.invoke({"notebook_json": notebook_json})
+            else:
+                # Fallback implementation
+                methodology_cells = state["task_assignments"]["methodology_cells"]
+                methodology_draft = self._generate_methodology_placeholder(methodology_cells)
             
             state["methodology_draft"] = methodology_draft
             
@@ -341,17 +429,21 @@ class PapergenOrchestrator:
         try:
             task_spec = state["task_assignments"]["agent_tasks"]["results_writer"]
             
-            # TODO: Implement actual ResultsWriter agent call
-            # if self.results_writer:
-            #     results_draft = await self.results_writer.generate_section(
-            #         cells=task_spec["input_cells"],
-            #         requirements=task_spec["requirements"]
-            #     )
-            # else:
-            
-            # Placeholder implementation
-            results_cells = task_spec["input_cells"]
-            results_draft = self._generate_results_placeholder(results_cells)
+            # Call ResultsWriter agent via consolidated tools
+            if self.write_results:
+                results_cells = state["task_assignments"]["results_cells"]
+                
+                # Prepare data format for the agent tool
+                agent_data = {
+                    "cells": results_cells
+                }
+                notebook_json = json.dumps(agent_data)
+                
+                results_draft = self.write_results.invoke({"notebook_json": notebook_json})
+            else:
+                # Fallback implementation
+                results_cells = state["task_assignments"]["results_cells"]
+                results_draft = self._generate_results_placeholder(results_cells)
             
             state["results_draft"] = results_draft
             
@@ -404,40 +496,28 @@ class PapergenOrchestrator:
         state["progress"] = 65.0
         
         try:
-            # Implement actual LiteraryAgent call
-            if self.literary_agent:
+            # Call LiteraryAgent via consolidated tools
+            if self.synthesize_literary_sections:
                 # Prepare synthesis data for LiteraryAgent
                 synthesis_data = {
+                    "user_notes": "Research paper generation from notebook",
                     "method_draft": state["methodology_draft"],
                     "results_draft": state["results_draft"]
                 }
+                synthesis_json = json.dumps(synthesis_data)
                 
-                # Generate all literary sections using the actual agent
-                literary_sections = self.literary_agent.synthesize_all_sections(synthesis_data)
+                # Generate all literary sections using the consolidated tool
+                literary_content = self.synthesize_literary_sections.invoke({"synthesis_data_json": synthesis_json})
                 
-                # Parse the sections to extract clean content
-                parsed_sections = {}
-                for section_key, section_content in literary_sections.items():
-                    # Remove the **Section: X** header and get clean content
-                    lines = section_content.split('\n')
-                    clean_content = []
-                    skip_header = True
-                    
-                    for line in lines:
-                        if skip_header and line.strip().startswith('**Section:'):
-                            skip_header = False
-                            continue
-                        if not skip_header:
-                            clean_content.append(line)
-                    
-                    parsed_sections[section_key] = '\n'.join(clean_content).strip()
+                # Parse the literary content into sections  
+                literary_sections = self._parse_literary_content(literary_content)
                 
-                state["literary_sections"] = parsed_sections
+                state["literary_sections"] = literary_sections
                 
                 state["messages"].append({
                     "agent": "literary_agent", 
                     "stage": "literary",
-                    "message": f"✍️ Generated {len(parsed_sections)} literary sections using LiteraryAgent"
+                    "message": f"✍️ Generated {len(literary_sections)} literary sections using consolidated tools"
                 })
                 
             else:
@@ -496,34 +576,62 @@ class PapergenOrchestrator:
         state["progress"] = 80.0
         
         try:
-            # TODO: Implement actual IllustrationCritic call
-            # if self.illustration_critic:
-            #     illustration_plan = await self.illustration_critic.review_draft(
-            #         draft_content=combined_draft,
-            #         existing_plots=existing_plots
-            #     )
-            # else:
-            
             # Count existing plots from notebook
             existing_plots = [cell for cell in state["notebook_cells"] 
                             if cell.get("type") == "output_plot"]
             
             illustrations = []
+            
+            # Add existing plots from notebook
             for plot in existing_plots:
                 illustrations.append({
                     "type": "existing",
                     "source": "notebook", 
                     "path": plot.get("content", {}).get("image_path", ""),
-                    "description": "Plot from notebook analysis"
+                    "description": "Plot from notebook analysis",
+                    "caption": f"Figure: {plot.get('content', {}).get('alt_text', 'Notebook visualization')}"
                 })
             
-            # Placeholder for generated illustrations
-            if state["methodology_draft"]:
-                illustrations.append({
-                    "type": "generated", 
-                    "description": "Architecture diagram for methodology",
-                    "path": "architecture_diagram.png",
-                    "prompt": "Generate diagram showing model architecture"
+            # Call IllustrationCritic via consolidated tools
+            if self.generate_illustrations:
+                # Combine all drafts for illustration analysis
+                combined_draft = ""
+                if state["methodology_draft"]:
+                    combined_draft += f"## Methodology\n{state['methodology_draft']}\n\n"
+                if state["results_draft"]:
+                    combined_draft += f"## Results\n{state['results_draft']}\n\n"
+                if state["literary_sections"]:
+                    for section_name, content in state["literary_sections"].items():
+                        combined_draft += f"## {section_name.title()}\n{content}\n\n"
+                
+                # Call IllustrationCritic agent via consolidated tool
+                illustration_results = self.generate_illustrations.invoke({"paper_draft": combined_draft})
+                
+                # Parse the results to extract generated illustrations
+                generated_illustrations = self._parse_illustration_results(illustration_results)
+                illustrations.extend(generated_illustrations)
+                
+                state["messages"].append({
+                    "agent": "illustration_critic",
+                    "stage": "illustrations", 
+                    "message": f"🎨 Generated {len(generated_illustrations)} new illustrations using IllustrationCritic agent"
+                })
+                
+            else:
+                # Fallback placeholder for generated illustrations
+                if state["methodology_draft"]:
+                    illustrations.append({
+                        "type": "generated", 
+                        "description": "Architecture diagram for methodology",
+                        "path": "architecture_diagram.png",
+                        "prompt": "Generate diagram showing model architecture",
+                        "caption": "Figure: Model architecture diagram showing the neural network structure"
+                    })
+                
+                state["messages"].append({
+                    "agent": "illustration_critic",
+                    "stage": "illustrations", 
+                    "message": f"⚠️ Used placeholder - IllustrationCritic agent not available"
                 })
                 
             state["illustrations"] = illustrations
@@ -531,7 +639,7 @@ class PapergenOrchestrator:
             state["messages"].append({
                 "agent": "illustration_critic",
                 "stage": "illustrations", 
-                "message": f"🎨 Reviewed illustrations: {len(existing_plots)} existing, {len(illustrations)-len(existing_plots)} recommended"
+                "message": f"🎨 Reviewed illustrations: {len(existing_plots)} existing, {len(illustrations)-len(existing_plots)} generated"
             })
             
         except Exception as e:
@@ -543,36 +651,81 @@ class PapergenOrchestrator:
                 "error": error_msg
             })
             
+            # Fallback to basic illustrations on error
+            try:
+                existing_plots = [cell for cell in state["notebook_cells"] 
+                                if cell.get("type") == "output_plot"]
+                illustrations = []
+                for plot in existing_plots:
+                    illustrations.append({
+                        "type": "existing",
+                        "source": "notebook", 
+                        "path": plot.get("content", {}).get("image_path", ""),
+                        "description": "Plot from notebook analysis"
+                    })
+                state["illustrations"] = illustrations
+            except:
+                state["illustrations"] = []
+            
         return state
     
     def _coordinate_assembly(self, state: PapergenState) -> PapergenState:
         """
-        Coordinate with Formatter agent for final assembly.
+        Coordinate with Formatter agent for final assembly and PDF generation.
         
-        TASK: @Formatter, assemble final paper from all sections and illustrations.
+        TASK: @FormatterAgent, assemble final paper, generate LaTeX, and compile to PDF.
         """
         state["current_stage"] = "assembling_paper"
         state["progress"] = 90.0
         
         try:
-            # TODO: Implement actual Formatter call
-            # if self.formatter_agent:
-            #     assembled_paper = await self.formatter_agent.assemble_paper(
-            #         template=state["template_content"],
-            #         sections=all_sections,
-            #         illustrations=state["illustrations"]
-            #     )
-            # else:
-            
-            # Placeholder assembly
-            assembled_content = self._assemble_paper_placeholder(state)
-            state["assembled_paper"] = assembled_content
-            
-            state["messages"].append({
-                "agent": "formatter",
-                "stage": "assembly",
-                "message": "📄 Paper assembly complete - all sections integrated"
-            })
+            # Use FormatterAgent via consolidated tools
+            if self.format_complete_paper:
+                # Prepare complete sections data for FormatterAgent
+                complete_sections = {
+                    "abstract": state["literary_sections"].get("abstract", ""),
+                    "introduction": state["literary_sections"].get("introduction", ""),
+                    "methodology_draft": state["methodology_draft"],
+                    "results_draft": state["results_draft"],
+                    "conclusion": state["literary_sections"].get("conclusion", ""),
+                    "illustrations": state["illustrations"],
+                    "template": state["template_content"]
+                }
+                
+                sections_json = json.dumps(complete_sections)
+                
+                # Call FormatterAgent to assemble the complete paper
+                assembled_paper = self.format_complete_paper.invoke({
+                    "sections_json": sections_json,
+                    "template": state["template_content"]
+                })
+                
+                # Embed figure references into the markdown content
+                assembled_paper = self._embed_figures_in_markdown(assembled_paper, state["illustrations"])
+                
+                state["assembled_paper"] = assembled_paper
+                
+                # Generate LaTeX and PDF
+                latex_files = self._generate_latex_and_pdf(assembled_paper, state)
+                state["latex_file"] = latex_files.get("latex_path", "")
+                state["pdf_file"] = latex_files.get("pdf_path", "")
+                
+                state["messages"].append({
+                    "agent": "formatter",
+                    "stage": "assembly",
+                    "message": f"📄 FormatterAgent: Paper assembled, LaTeX generated, PDF compiled: {latex_files.get('pdf_path', 'N/A')}"
+                })
+                
+            else:
+                # Fallback to placeholder assembly
+                assembled_content = self._assemble_paper_placeholder(state)
+                state["assembled_paper"] = assembled_content
+                
+                state["messages"].append({
+                    "agent": "formatter",
+                    "stage": "assembly",
+                    "message": "📄 Paper assembly complete - fallback method (FormatterAgent not available)"
+                })
             
         except Exception as e:
             error_msg = f"Paper assembly failed: {str(e)}"
@@ -700,6 +853,8 @@ class PapergenOrchestrator:
             literary_sections={},
             illustrations=[],
             assembled_paper="",
+            latex_file="",
+            pdf_file="",
             generation_complete=False,
             errors=[],
             warnings=[],
@@ -723,6 +878,8 @@ class PapergenOrchestrator:
                     "conclusion": final_state["literary_sections"].get("conclusion", "")
                 },
                 "illustrations": final_state["illustrations"],
+                "latex_file": final_state.get("latex_file", ""),
+                "pdf_file": final_state.get("pdf_file", ""),
                 "errors": final_state["errors"],
                 "warnings": final_state["warnings"],
                 "messages": final_state["messages"],
@@ -741,11 +898,423 @@ class PapergenOrchestrator:
                 "paper_content": "",
                 "sections": {},
                 "illustrations": [],
+                "latex_file": "",
+                "pdf_file": "",
                 "errors": [str(e)],
                 "warnings": [],
                 "messages": [{"agent": "orchestrator", "error": str(e)}],
                 "metadata": {"workflow_failed": True}
             }
+    
+    def _generate_latex_and_pdf(self, paper_content: str, state: PapergenState) -> Dict[str, str]:
+        """
+        Generate LaTeX file from paper content and compile to PDF.
+        
+        Args:
+            paper_content: Complete formatted paper content
+            state: Current workflow state
+            
+        Returns:
+            Dictionary with latex_path and pdf_path
+        """
+        import os
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        import re
+        
+        try:
+            # Create output directory
+            output_dir = Path("data/reports")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate unique filename based on timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"research_paper_{timestamp}"
+            
+            latex_path = output_dir / f"{base_filename}.tex"
+            pdf_path = output_dir / f"{base_filename}.pdf"
+            
+            # Convert markdown content to LaTeX
+            latex_content = self._convert_markdown_to_latex(paper_content, state)
+            
+            # Write LaTeX file
+            with open(latex_path, 'w', encoding='utf-8') as f:
+                f.write(latex_content)
+            
+            # Compile LaTeX to PDF using pdflatex
+            try:
+                # Run pdflatex twice for proper references
+                for _ in range(2):
+                    subprocess.run([
+                        'pdflatex', 
+                        '-interaction=nonstopmode',
+                        '-output-directory', str(output_dir),
+                        str(latex_path)
+                    ], check=True, capture_output=True, text=True, cwd=str(output_dir))
+                
+                # Clean up auxiliary files
+                aux_extensions = ['.aux', '.log', '.out', '.toc', '.fls', '.fdb_latexmk']
+                for ext in aux_extensions:
+                    aux_file = output_dir / f"{base_filename}{ext}"
+                    if aux_file.exists():
+                        aux_file.unlink()
+                
+                return {
+                    "latex_path": str(latex_path),
+                    "pdf_path": str(pdf_path),
+                    "status": "success"
+                }
+                
+            except subprocess.CalledProcessError as e:
+                # PDF compilation failed, but LaTeX file was created
+                state["warnings"].append(f"PDF compilation failed: {e}")
+                return {
+                    "latex_path": str(latex_path),
+                    "pdf_path": "",
+                    "status": "latex_only",
+                    "error": str(e)
+                }
+                
+        except Exception as e:
+            state["errors"].append(f"LaTeX generation failed: {e}")
+            return {
+                "latex_path": "",
+                "pdf_path": "",
+                "status": "failed",
+                "error": str(e)
+            }
+    
+    def _convert_markdown_to_latex(self, markdown_content: str, state: PapergenState) -> str:
+        """
+        Convert markdown paper content to LaTeX format.
+        
+        Args:
+            markdown_content: Paper content in markdown format
+            state: Current workflow state for accessing metadata
+            
+        Returns:
+            LaTeX-formatted content
+        """
+        import re
+        
+        # Extract title from content or use default
+        title_match = re.search(r'^#\s+(.+)$', markdown_content, re.MULTILINE)
+        title = title_match.group(1) if title_match else "Research Paper"
+        
+        # Process markdown and include illustrations
+        processed_content = self._process_markdown_sections(markdown_content, state.get("illustrations", []))
+        
+        # LaTeX document template
+        latex_template = r"""\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{abstract}
+
+% Page geometry
+\geometry{margin=1in}
+\onehalfspacing
+
+% Title formatting
+\titleformat{\section}{\large\bfseries}{\thesection.}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{""" + title + r"""}
+\author{Generated by PraxisAI}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+""" + processed_content + r"""
+
+\end{document}"""
+
+        return latex_template
+    
+    def _process_markdown_sections(self, content: str, illustrations: Optional[List[Dict[str, Any]]] = None) -> str:
+        """
+        Process markdown content and convert to LaTeX sections.
+        
+        Args:
+            content: Markdown content to process
+            illustrations: List of illustration data to include
+            
+        Returns:
+            LaTeX-formatted sections with embedded figures
+        """
+        import re
+        from pathlib import Path
+        
+        if illustrations is None:
+            illustrations = []
+        
+        # Convert markdown headers to LaTeX sections
+        content = re.sub(r'^##\s+(.+)$', r'\\section{\1}', content, flags=re.MULTILINE)
+        content = re.sub(r'^###\s+(.+)$', r'\\subsection{\1}', content, flags=re.MULTILINE)
+        content = re.sub(r'^####\s+(.+)$', r'\\subsubsection{\1}', content, flags=re.MULTILINE)
+        
+        # Convert bold text
+        content = re.sub(r'\*\*(.+?)\*\*', r'\\textbf{\1}', content)
+        
+        # Convert italic text  
+        content = re.sub(r'\*(.+?)\*', r'\\textit{\1}', content)
+        
+        # Convert code blocks
+        content = re.sub(r'```python\n(.*?)\n```', r'\\begin{verbatim}\n\1\n\\end{verbatim}', content, flags=re.DOTALL)
+        content = re.sub(r'```\n(.*?)\n```', r'\\begin{verbatim}\n\1\n\\end{verbatim}', content, flags=re.DOTALL)
+        
+        # Convert inline code
+        content = re.sub(r'`(.+?)`', r'\\texttt{\1}', content)
+        
+        # Handle figure references - convert to proper LaTeX figures
+        def replace_figure_ref(match):
+            caption = match.group(1)
+            image_path = match.group(2)
+            
+            # Extract filename and create LaTeX figure
+            filename = Path(image_path).name if image_path else "unknown"
+            
+            return f"""\\begin{{figure}}[H]
+    \\centering
+    \\includegraphics[width=0.8\\textwidth]{{{image_path}}}
+    \\caption{{{caption}}}
+\\end{{figure}}"""
+        
+        content = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', replace_figure_ref, content)
+        
+        # Remove main title (already in document title)
+        content = re.sub(r'^#\s+.+$', '', content, flags=re.MULTILINE)
+        
+        # Insert illustrations at strategic points
+        if illustrations:
+            content_sections = content.split('\\section{')
+            enhanced_sections = [content_sections[0]]  # Keep content before first section
+            
+            for i, section in enumerate(content_sections[1:], 1):
+                # Add section header back
+                section = '\\section{' + section
+                
+                # Add illustrations for this section if available
+                if i <= len(illustrations):
+                    illustration = illustrations[i-1]
+                    figure_latex = self._create_figure_latex(illustration, i)
+                    
+                    # Insert figure after the first paragraph of the section
+                    paragraphs = section.split('\n\n', 2)
+                    if len(paragraphs) >= 2:
+                        section = paragraphs[0] + '\n\n' + paragraphs[1] + '\n\n' + figure_latex + '\n\n' + '\n\n'.join(paragraphs[2:])
+                    else:
+                        section = section + '\n\n' + figure_latex
+                
+                enhanced_sections.append(section)
+            
+            content = ''.join(enhanced_sections)
+        
+        # Clean up multiple newlines
+        content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+        
+        return content.strip()
+    
+    def _create_figure_latex(self, illustration: Dict[str, Any], figure_num: int) -> str:
+        """
+        Create LaTeX figure code from illustration data.
+        
+        Args:
+            illustration: Illustration dictionary with file_path and caption
+            figure_num: Figure number for referencing
+            
+        Returns:
+            LaTeX figure code
+        """
+        from pathlib import Path
+        import os
+        
+        # Get the figure file path
+        file_path = illustration.get('file_path', '')
+        caption = illustration.get('caption', f'Generated Figure {figure_num}')
+        
+        if not file_path:
+            return f'% Missing figure {figure_num}: {caption}'
+        
+        # Convert path for LaTeX compilation
+        file_path = Path(file_path)
+        if file_path.exists():
+            # For LaTeX compilation, use relative path from reports to generated_figures
+            relative_path = f"../../generated_figures/{file_path.name}"
+        else:
+            # Try just the filename in generated_figures
+            relative_path = f"../../generated_figures/{Path(file_path).name}"
+        
+        figure_latex = f"""\\begin{{figure}}[H]
+    \\centering
+    \\includegraphics[width=0.8\\textwidth]{{{relative_path}}}
+    \\caption{{{caption}}}
+    \\label{{fig:{figure_num}}}
+\\end{{figure}}"""
+        
+        return figure_latex
+    
+    def _embed_figures_in_markdown(self, markdown_content: str, illustrations: List[Dict[str, Any]]) -> str:
+        """
+        Embed figure references into markdown content for proper LaTeX conversion.
+        
+        Args:
+            markdown_content: The assembled markdown paper content
+            illustrations: List of illustration data
+            
+        Returns:
+            Enhanced markdown content with embedded figure references
+        """
+        if not illustrations:
+            return markdown_content
+        
+        import re
+        
+        # Split content into sections
+        sections = re.split(r'(##?\s+[^\n]+)', markdown_content)
+        
+        # Find major sections (Results, Methodology, etc.) and insert figures
+        enhanced_sections = []
+        figure_count = 0
+        
+        i = 0
+        while i < len(sections):
+            section = sections[i]
+            enhanced_sections.append(section)
+            
+            # Check if this is a section header
+            if re.match(r'##?\s+', section):
+                section_title = section.lower()
+                
+                # Insert figures in Results or Methodology sections
+                if any(keyword in section_title for keyword in ['result', 'method', 'analysis', 'finding']):
+                    if figure_count < len(illustrations) and i + 1 < len(sections):
+                        illustration = illustrations[figure_count]
+                        content_section = sections[i + 1]
+                        
+                        # Insert figure after first paragraph
+                        paragraphs = content_section.split('\n\n', 1)
+                        if len(paragraphs) >= 2:
+                            figure_ref = self._create_markdown_figure_ref(illustration, figure_count + 1)
+                            enhanced_content = paragraphs[0] + '\n\n' + figure_ref + '\n\n' + paragraphs[1]
+                        else:
+                            # Append figure at end of section
+                            figure_ref = self._create_markdown_figure_ref(illustration, figure_count + 1)
+                            enhanced_content = content_section + '\n\n' + figure_ref
+                        
+                        # Append the enhanced content section
+                        enhanced_sections.append(enhanced_content)
+                        figure_count += 1
+                        i += 2  # Skip the content section since we've processed it
+                        continue
+            
+            i += 1
+        
+        return ''.join(enhanced_sections)
+    
+    def _create_markdown_figure_ref(self, illustration: Dict[str, Any], figure_num: int) -> str:
+        """
+        Create markdown figure reference that will be converted to LaTeX.
+        
+        Args:
+            illustration: Illustration data
+            figure_num: Figure number
+            
+        Returns:
+            Markdown figure reference
+        """
+        from pathlib import Path
+        
+        file_path = illustration.get('file_path', '')
+        caption = illustration.get('caption', f'Figure {figure_num}')
+        
+        if file_path:
+            filename = Path(file_path).name
+            return f"![{caption}](../../generated_figures/{filename})"
+        else:
+            return f"<!-- Figure {figure_num}: {caption} -->"
+    
+    def _parse_literary_content(self, content: str) -> Dict[str, str]:
+        """
+        Parse combined literary content into separate sections.
+        
+        Args:
+            content: Combined abstract, introduction, and conclusion text
+            
+        Returns:
+            Dictionary with separate sections
+        """
+        sections = {"abstract": "", "introduction": "", "conclusion": ""}
+        
+        try:
+            # Split content into lines and identify sections
+            lines = content.split('\n')
+            current_section = None
+            current_content = []
+            
+            for line in lines:
+                line_lower = line.lower().strip()
+                
+                # Check for section headers
+                if 'abstract' in line_lower and ('##' in line or '**' in line or line_lower.startswith('abstract')):
+                    if current_section and current_content:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                    current_section = "abstract"
+                    current_content = []
+                elif 'introduction' in line_lower and ('##' in line or '**' in line or line_lower.startswith('introduction')):
+                    if current_section and current_content:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                    current_section = "introduction"
+                    current_content = []
+                elif 'conclusion' in line_lower and ('##' in line or '**' in line or line_lower.startswith('conclusion')):
+                    if current_section and current_content:
+                        sections[current_section] = '\n'.join(current_content).strip()
+                    current_section = "conclusion"
+                    current_content = []
+                else:
+                    # Add line to current section if we're in one
+                    if current_section:
+                        current_content.append(line)
+            
+            # Add the last section
+            if current_section and current_content:
+                sections[current_section] = '\n'.join(current_content).strip()
+            
+            # If no sections were parsed, treat the entire content as abstract
+            if not any(sections.values()):
+                # Split content roughly into thirds
+                content_lines = [line for line in content.split('\n') if line.strip()]
+                total_lines = len(content_lines)
+                
+                if total_lines > 3:
+                    third = total_lines // 3
+                    sections["abstract"] = '\n'.join(content_lines[:third])
+                    sections["introduction"] = '\n'.join(content_lines[third:2*third])
+                    sections["conclusion"] = '\n'.join(content_lines[2*third:])
+                else:
+                    sections["abstract"] = content
+                    sections["introduction"] = "Introduction section not clearly identified."
+                    sections["conclusion"] = "Conclusion section not clearly identified."
+            
+        except Exception as e:
+            # Fallback: return the entire content as abstract
+            sections = {
+                "abstract": content,
+                "introduction": "Error parsing introduction section",
+                "conclusion": "Error parsing conclusion section"
+            }
+        
+        return sections
 
 # Factory function for easy instantiation
 def create_papergen_orchestrator() -> PapergenOrchestrator:

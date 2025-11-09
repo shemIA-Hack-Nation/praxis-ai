@@ -48,6 +48,16 @@ data_images_path = Path("data/notebook_images")
 data_images_path.mkdir(parents=True, exist_ok=True)
 app.mount("/images", StaticFiles(directory=str(data_images_path)), name="images")
 
+# Serve static files for generated reports (PDFs, LaTeX)
+data_reports_path = Path("data/reports")
+data_reports_path.mkdir(parents=True, exist_ok=True)
+app.mount("/reports", StaticFiles(directory=str(data_reports_path)), name="reports")
+
+# Serve static files for generated figures
+generated_figures_path = Path("generated_figures")
+generated_figures_path.mkdir(parents=True, exist_ok=True)
+app.mount("/figures", StaticFiles(directory=str(generated_figures_path)), name="figures")
+
 @app.get("/")
 async def root():
     return {"message": "Praxis AI Backend API", "status": "active"}

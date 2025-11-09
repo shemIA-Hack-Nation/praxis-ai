@@ -22,11 +22,14 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Get GROQ API key from environment
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Configure matplotlib for academic quality
 plt.rcParams['figure.dpi'] = 300
@@ -45,18 +48,37 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 def get_working_llm():
-    """Initialize Gemini LLM."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("❌ GEMINI_API_KEY not found in .env file.")
+    """Initialize Groq LLM."""
+    if not GROQ_API_KEY:
+        raise ValueError("❌ GROQ_API_KEY not found in .env file.")
     
-    model_name = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
+    # Set environment variable for ChatGroq
+    os.environ["GROQ_API_KEY"] = GROQ_API_KEY
     
-    return ChatGoogleGenerativeAI(
-        model=model_name,
-        temperature=0.3,
-        google_api_key=api_key
-    )
+    # Try multiple models in order of preference
+    models_to_try = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant", 
+        "llama3-8b-8192",
+        "gemma2-9b-it",
+        "mixtral-8x7b-32768"
+    ]
+    
+    for model in models_to_try:
+        try:
+            llm_instance = ChatGroq(
+                model=model,
+                temperature=0.3,
+                max_tokens=2000,
+                stop_sequences=None
+            )
+            print(f"✓ IllustrationCritic initialized with Groq model: {model}")
+            return llm_instance
+        except Exception as e:
+            print(f"⚠ Failed to initialize Groq model {model}: {str(e)[:100]}...")
+            continue
+    
+    raise ValueError("❌ Failed to initialize any supported Groq model for IllustrationCritic")
 
 
 # ------------------------------
@@ -603,8 +625,18 @@ def agent_illustration_critic(paper_draft: str) -> str:
         formatted_prompt = prompt.format_messages(paper_draft=paper_draft)
         response = llm.invoke(formatted_prompt)
         
-        # Step 2: Parse requests
-        requests = parse_visualization_requests(response.content)
+        # Step 2: Parse requests (handle different response formats)
+        if hasattr(response, 'content'):
+            if isinstance(response.content, str):
+                response_text = response.content
+            else:
+                response_text = str(response.content)
+        elif isinstance(response, str):
+            response_text = response
+        else:
+            response_text = str(response)
+            
+        requests = parse_visualization_requests(response_text)
         
         if not requests:
             return "INFO: No visualization needs identified in this draft section."
