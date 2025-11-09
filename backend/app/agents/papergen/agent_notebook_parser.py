@@ -1,8 +1,18 @@
 import sys
 import os
 import json
-from backend.app.agents.agent_tools import parse_notebook
 from pathlib import Path
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+try:
+    from backend.app.agents.agent_tools import parse_notebook
+except ImportError:
+    # Fallback: try direct import
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from agents.agent_tools import parse_notebook
 
 def get_notebook_images_by_id(notebook_id: str):
     """
