@@ -14,6 +14,12 @@ style="max-width: 100%; height: auto;"
 </p>
 ## 🌟 Overview
 
+
+https://github.com/user-attachments/assets/6408b199-3564-4bd2-9b79-c1668c7e87e7
+
+
+
+<br>
 PraxisAI Agentic AI Workflows : 
 Paper Generation: 
 
